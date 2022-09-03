@@ -48,6 +48,7 @@ type TokenRequest struct {
 	Job       string `form:"job" json:"job" xml:"job"  binding:"required"`
 	Namespace string `form:"ns" json:"ns" xml:"ns"  binding:"required"`
 	Audience  string `form:"aud" json:"aud" xml:"aud"`
+	Subject   string `form:"sub" json:"sub" xml:"sub"  binding:"required"`
 }
 
 type WellKnownOidc struct {
@@ -81,17 +82,18 @@ func main() {
 		return
 	}
 
+	externalUrl := "http://localhost:8000"
 	//TODO: get hostname from config
 	server01 := &http.Server{
 		Addr:         ":8000",
-		Handler:      publicRouter("http://localhost:8000", key),
+		Handler:      publicRouter(externalUrl, key),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
 	server02 := &http.Server{
 		Addr:         ":8001",
-		Handler:      privateRouter(prvKey),
+		Handler:      privateRouter(prvKey, externalUrl),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -142,7 +144,7 @@ func publicRouter(externalUrl string, key jwk.Key) http.Handler {
 	return e
 }
 
-func privateRouter(prvKey *rsa.PrivateKey) http.Handler {
+func privateRouter(prvKey *rsa.PrivateKey, externalUrl string) http.Handler {
 	e := gin.New()
 
 	m := ginmetrics.GetMonitor()
@@ -172,7 +174,7 @@ func privateRouter(prvKey *rsa.PrivateKey) http.Handler {
 		if req.Audience == "" {
 			req.Audience = "workflow"
 		}
-		tokenString, _ := generateToken(prvKey, req)
+		tokenString, _ := generateToken(prvKey, req, externalUrl)
 		c.JSON(http.StatusOK, gin.H{
 			"token": tokenString,
 		})
@@ -180,11 +182,13 @@ func privateRouter(prvKey *rsa.PrivateKey) http.Handler {
 	return e
 }
 
-func generateToken(prvKey *rsa.PrivateKey, req TokenRequest) (string, error) {
+func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string) (string, error) {
 	claims := &JobToken{
 		JobId:     req.Job,
 		Namespace: req.Namespace,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuerUrl,
+			Subject:   req.Subject,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),

@@ -5,8 +5,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/penglongli/gin-metrics/ginmetrics"
 	"golang.org/x/sync/errgroup"
 	"log"
 	"net/http"
@@ -47,9 +51,9 @@ type TokenRequest struct {
 }
 
 type WellKnownOidc struct {
-	Issuer      string   `json:"issuer"`
-	AuthURL     string   `json:"authorization_endpoint"`
-	TokenURL    string   `json:"token_endpoint"`
+	Issuer string `json:"issuer"`
+	//AuthURL     string   `json:"authorization_endpoint"`
+	//TokenURL    string   `json:"token_endpoint"`
 	JWKSURL     string   `json:"jwks_uri"`
 	UserInfoURL string   `json:"userinfo_endpoint"`
 	Algorithms  []string `json:"id_token_signing_alg_values_supported"`
@@ -67,10 +71,20 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	key, err := jwk.FromRaw(prvKey.PublicKey)
+	if err != nil {
+		fmt.Printf("failed to create symmetric key: %s\n", err)
+		return
+	}
+	if _, ok := key.(jwk.RSAPublicKey); !ok {
+		fmt.Printf("expected jwk.RSAPublicKey, got %T\n", key)
+		return
+	}
+
 	//TODO: get hostname from config
 	server01 := &http.Server{
 		Addr:         ":8000",
-		Handler:      publicRouter("http://localhost:8000"),
+		Handler:      publicRouter("http://localhost:8000", key),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -103,7 +117,7 @@ func main() {
 	}
 }
 
-func publicRouter(publicHostname string) http.Handler {
+func publicRouter(publicHostname string, key jwk.Key) http.Handler {
 	e := gin.New()
 	e.Use(gin.Recovery())
 	e.GET("/", func(c *gin.Context) {
@@ -115,8 +129,13 @@ func publicRouter(publicHostname string) http.Handler {
 	e.GET("/.well-known/openid-configuration", func(c *gin.Context) {
 		c.JSON(http.StatusOK, WellKnownOidc{
 			Algorithms:  []string{"RS512"},
-			JWKSURL:     publicHostname + "/.well-known/keys.json",
+			JWKSURL:     publicHostname + "/.well-known/keys",
 			UserInfoURL: publicHostname + "/userinfo",
+		})
+	})
+	e.GET("/.well-known/keys", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"keys": []interface{}{key},
 		})
 	})
 	return e
@@ -124,6 +143,19 @@ func publicRouter(publicHostname string) http.Handler {
 
 func privateRouter(prvKey *rsa.PrivateKey) http.Handler {
 	e := gin.New()
+
+	m := ginmetrics.GetMonitor()
+	// +optional set metric path, default /debug/metrics
+	m.SetMetricPath("/metrics")
+	// +optional set slow time, default 5s
+	m.SetSlowTime(10)
+	// +optional set request duration, default {0.1, 0.3, 1.2, 5, 10}
+	// used to p95, p99
+	m.SetDuration([]float64{0.1, 0.3, 1.2, 5, 10})
+
+	// set middleware for gin
+	m.Use(e)
+
 	e.Use(gin.Recovery())
 	e.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

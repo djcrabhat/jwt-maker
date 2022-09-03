@@ -60,14 +60,3 @@ components:
           type: array
           items:
             type: object
-
-    ApiResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-        type:
-          type: string
-        message:
-          type: string

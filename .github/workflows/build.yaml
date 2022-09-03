@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
       - run: go version
 
       - run: go build .
@@ -28,13 +28,12 @@ jobs:
           name: test-results
           path: TestResults.json
       - name: Upload binary
-          uses: actions/upload-artifact@v3
-          with:
-            name: linux-binary
-            path: workflow-jwt-creator
-
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-binary
+          path: workflow-jwt-creator
       - name: Upload test results
-          uses: actions/upload-artifact@v3
-          with:
-            name: test-results
-            path: TestResults.json
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: TestResults.json

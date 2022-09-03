@@ -11,8 +11,7 @@ RUN go mod download
 COPY *.go ./
 RUN go build -o /workflow-jwt-creator
 
-EXPOSE 8080
-EXPOSE 8081
-
+EXPOSE 8000
+EXPOSE 8001
 
 CMD [ "/workflow-jwt-creator" ]

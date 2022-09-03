@@ -67,9 +67,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	//TODO: get hostname from config
 	server01 := &http.Server{
 		Addr:         ":8000",
-		Handler:      publicRouter(),
+		Handler:      publicRouter("http://localhost:8000"),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -102,7 +103,7 @@ func main() {
 	}
 }
 
-func publicRouter() http.Handler {
+func publicRouter(publicHostname string) http.Handler {
 	e := gin.New()
 	e.Use(gin.Recovery())
 	e.GET("/", func(c *gin.Context) {
@@ -110,9 +111,12 @@ func publicRouter() http.Handler {
 			"message": "pong",
 		})
 	})
+	// TODO: get external hostname
 	e.GET("/.well-known/openid-configuration", func(c *gin.Context) {
 		c.JSON(http.StatusOK, WellKnownOidc{
-			Algorithms: []string{"RS512"},
+			Algorithms:  []string{"RS512"},
+			JWKSURL:     publicHostname + "/.well-known/keys.json",
+			UserInfoURL: publicHostname + "/userinfo",
 		})
 	})
 	return e

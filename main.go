@@ -56,7 +56,7 @@ type WellKnownOidc struct {
 	//TokenURL    string   `json:"token_endpoint"`
 	JWKSURL     string   `json:"jwks_uri"`
 	UserInfoURL string   `json:"userinfo_endpoint"`
-	Algorithms  []string `json:"id_token_signing_alg_values_supported"`
+	Algorithms  []string `json:""`
 }
 
 var (
@@ -117,7 +117,7 @@ func main() {
 	}
 }
 
-func publicRouter(publicHostname string, key jwk.Key) http.Handler {
+func publicRouter(externalUrl string, key jwk.Key) http.Handler {
 	e := gin.New()
 	e.Use(gin.Recovery())
 	e.GET("/", func(c *gin.Context) {
@@ -128,9 +128,10 @@ func publicRouter(publicHostname string, key jwk.Key) http.Handler {
 	// TODO: get external hostname
 	e.GET("/.well-known/openid-configuration", func(c *gin.Context) {
 		c.JSON(http.StatusOK, WellKnownOidc{
+			Issuer:      externalUrl,
 			Algorithms:  []string{"RS512"},
-			JWKSURL:     publicHostname + "/.well-known/keys",
-			UserInfoURL: publicHostname + "/userinfo",
+			JWKSURL:     externalUrl + "/.well-known/keys",
+			UserInfoURL: externalUrl + "/userinfo",
 		})
 	})
 	e.GET("/.well-known/keys", func(c *gin.Context) {

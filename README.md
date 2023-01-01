@@ -1,7 +1,10 @@
 A service that can generate JWTs on a private port, then serve JWKS keys and `/userinfo` calls on a public port.
 
 - 8000: public port
+  - GET /.well-known/openid-configuration
+  - GET /.well-known/keys
 - 8001: private, admin port
+  - POST /tokens/jobs/generate
 
 ### Generate An RSA private key
 

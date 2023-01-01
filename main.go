@@ -106,6 +106,7 @@ func main() {
 		fmt.Printf("expected jwk.RSAPublicKey, got %T\n", key)
 		return
 	}
+	jwk.AssignKeyID(key)
 
 	externalUrl := viper.GetString("external_url")
 
@@ -118,7 +119,7 @@ func main() {
 
 	server02 := &http.Server{
 		Addr:         ":8001",
-		Handler:      privateRouter(prvKey, externalUrl),
+		Handler:      privateRouter(prvKey, externalUrl, key),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -169,7 +170,7 @@ func publicRouter(externalUrl string, key jwk.Key) http.Handler {
 	return e
 }
 
-func privateRouter(prvKey *rsa.PrivateKey, externalUrl string) http.Handler {
+func privateRouter(prvKey *rsa.PrivateKey, externalUrl string, key jwk.Key) http.Handler {
 	e := gin.New()
 
 	m := ginmetrics.GetMonitor()
@@ -199,7 +200,7 @@ func privateRouter(prvKey *rsa.PrivateKey, externalUrl string) http.Handler {
 		if req.Audience == "" {
 			req.Audience = "jwt-maker"
 		}
-		tokenString, _ := generateToken(prvKey, req, externalUrl)
+		tokenString, _ := generateToken(prvKey, req, externalUrl, key)
 		c.JSON(http.StatusOK, gin.H{
 			"token": tokenString,
 		})
@@ -207,7 +208,9 @@ func privateRouter(prvKey *rsa.PrivateKey, externalUrl string) http.Handler {
 	return e
 }
 
-func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string) (string, error) {
+func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string, jwkPublic jwk.Key) (string, error) {
+	// TODO: make expire window configurable
+	expires := time.Now().Add(24 * time.Hour)
 	claims := &JobToken{
 		JobId:     req.Job,
 		Namespace: req.Namespace,
@@ -216,7 +219,7 @@ func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string) (
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuerUrl,
 			Subject:   req.Subject,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(expires),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Audience:  []string{req.Audience},
@@ -224,6 +227,7 @@ func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string) (
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS512, claims)
+	token.Header["kid"] = jwkPublic.KeyID()
 
 	// Sign and get the complete encoded token as a string using the secret
 	tokenString, err := token.SignedString(prvKey)

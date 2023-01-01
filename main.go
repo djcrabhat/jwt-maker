@@ -40,10 +40,10 @@ func loadRsaPrivateKey(path string) (*rsa.PrivateKey, error) {
 }
 
 type JobToken struct {
-	JobId     string        `json:"job"`
-	Namespace string        `json:"ns"`
-	Claims    []string      `json:"claims"`
-	Roles     []interface{} `json:"roles"`
+	JobId     string        `json:"job,omitempty"`
+	Namespace string        `json:"ns,omitempty"`
+	Claims    []string      `json:"claims,omitempty"`
+	Roles     []interface{} `json:"roles,omitempty"`
 	jwt.RegisteredClaims
 }
 

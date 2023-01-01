@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/spf13/viper"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/penglongli/gin-metrics/ginmetrics"
@@ -39,16 +40,20 @@ func loadRsaPrivateKey(path string) (*rsa.PrivateKey, error) {
 }
 
 type JobToken struct {
-	JobId     string `json:"job"`
-	Namespace string `json:"ns"`
+	JobId     string        `json:"job,omitempty"`
+	Namespace string        `json:"ns,omitempty"`
+	Claims    []string      `json:"claims,omitempty"`
+	Roles     []interface{} `json:"roles,omitempty"`
 	jwt.RegisteredClaims
 }
 
 type TokenRequest struct {
-	Job       string `form:"job" json:"job" xml:"job"  binding:"required"`
-	Namespace string `form:"ns" json:"ns" xml:"ns"  binding:"required"`
-	Audience  string `form:"aud" json:"aud" xml:"aud"`
-	Subject   string `form:"sub" json:"sub" xml:"sub"  binding:"required"`
+	Job       string        `form:"job" json:"job" xml:"job"`
+	Namespace string        `form:"ns" json:"ns" xml:"ns"`
+	Audience  string        `form:"aud" json:"aud" xml:"aud"`
+	Claims    []string      `json:"claims"`
+	Roles     []interface{} `json:"roles"`
+	Subject   string        `form:"sub" json:"sub" xml:"sub"  binding:"required"`
 }
 
 type WellKnownOidc struct {
@@ -64,10 +69,30 @@ var (
 	g errgroup.Group
 )
 
+func loadConfig() {
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	viper.SetEnvPrefix("jwt")
+	viper.SetDefault("private_key", "cert/id_rsa")
+	viper.SetDefault("external_url", "http://localhost:8000")
+
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found; ignore error if desired
+		} else {
+			// Config file was found but another error was produced
+		}
+	}
+}
+
 func main() {
 	// Create a new token object, specifying signing method and the claims
 	// you would like it to contain.
-	prvKey, err := loadRsaPrivateKey("cert/id_rsa")
+	loadConfig()
+	prvKey, err := loadRsaPrivateKey(viper.GetString("private_key"))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -82,8 +107,8 @@ func main() {
 		return
 	}
 
-	externalUrl := "http://localhost:8000"
-	//TODO: get hostname from config
+	externalUrl := viper.GetString("external_url")
+
 	server01 := &http.Server{
 		Addr:         ":8000",
 		Handler:      publicRouter(externalUrl, key),
@@ -172,7 +197,7 @@ func privateRouter(prvKey *rsa.PrivateKey, externalUrl string) http.Handler {
 			return
 		}
 		if req.Audience == "" {
-			req.Audience = "workflow"
+			req.Audience = "jwt-maker"
 		}
 		tokenString, _ := generateToken(prvKey, req, externalUrl)
 		c.JSON(http.StatusOK, gin.H{
@@ -186,6 +211,8 @@ func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string) (
 	claims := &JobToken{
 		JobId:     req.Job,
 		Namespace: req.Namespace,
+		Claims:    req.Claims,
+		Roles:     req.Roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuerUrl,
 			Subject:   req.Subject,

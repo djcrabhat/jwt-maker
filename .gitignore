@@ -2,3 +2,6 @@
 
 workflow-jwt-creator
 cert/
+
+node_modules/
+package-lock.json

@@ -39,32 +39,6 @@ func loadRsaPrivateKey(path string) (*rsa.PrivateKey, error) {
 	return privateKeyImported, err
 }
 
-type JobToken struct {
-	JobId     string        `json:"job,omitempty"`
-	Namespace string        `json:"ns,omitempty"`
-	Claims    []string      `json:"claims,omitempty"`
-	Roles     []interface{} `json:"roles,omitempty"`
-	jwt.RegisteredClaims
-}
-
-type TokenRequest struct {
-	Job       string        `form:"job" json:"job" xml:"job"`
-	Namespace string        `form:"ns" json:"ns" xml:"ns"`
-	Audience  string        `form:"aud" json:"aud" xml:"aud"`
-	Claims    []string      `json:"claims"`
-	Roles     []interface{} `json:"roles"`
-	Subject   string        `form:"sub" json:"sub" xml:"sub"  binding:"required"`
-}
-
-type WellKnownOidc struct {
-	Issuer string `json:"issuer"`
-	//AuthURL     string   `json:"authorization_endpoint"`
-	//TokenURL    string   `json:"token_endpoint"`
-	JWKSURL     string   `json:"jwks_uri"`
-	UserInfoURL string   `json:"userinfo_endpoint"`
-	Algorithms  []string `json:""`
-}
-
 var (
 	g errgroup.Group
 )
@@ -210,23 +184,42 @@ func privateRouter(prvKey *rsa.PrivateKey, externalUrl string, key jwk.Key) http
 
 func generateToken(prvKey *rsa.PrivateKey, req TokenRequest, issuerUrl string, jwkPublic jwk.Key) (string, error) {
 	// TODO: make expire window configurable
-	expires := time.Now().Add(24 * time.Hour)
-	claims := &JobToken{
-		JobId:     req.Job,
-		Namespace: req.Namespace,
-		Claims:    req.Claims,
-		Roles:     req.Roles,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    issuerUrl,
-			Subject:   req.Subject,
-			ExpiresAt: jwt.NewNumericDate(expires),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Audience:  []string{req.Audience},
-		},
+	duration := 24 * time.Hour
+	if req.TokenDuration != "" {
+		var parseErr error
+		duration, parseErr = time.ParseDuration(req.TokenDuration)
+		if parseErr != nil {
+			duration = 24 * time.Hour
+		}
+	}
+	expires := time.Now().Add(duration)
+
+	// build a MapClaims instead of a more convenient strongly typed one, so we can build in arbitrary claims at request time
+	rawClaims := jwt.MapClaims{}
+	for k, v := range req.ExtraClaims {
+		rawClaims[k] = v
+	}
+	rawClaims["iss"] = issuerUrl
+	rawClaims["sub"] = req.Subject
+	rawClaims["exp"] = jwt.NewNumericDate(expires)
+	rawClaims["iat"] = jwt.NewNumericDate(time.Now())
+	rawClaims["nbf"] = jwt.NewNumericDate(time.Now())
+	rawClaims["aud"] = []string{req.Audience}
+	if len(req.Claims) > 0 {
+		rawClaims["claims"] = req.Claims
+	}
+	if len(req.Roles) > 0 {
+		rawClaims["roles"] = req.Roles
+
+	}
+	if req.Namespace != "" {
+		rawClaims["ns"] = req.Namespace
+	}
+	if req.Job != "" {
+		rawClaims["job"] = req.Job
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS512, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS512, rawClaims)
 	token.Header["kid"] = jwkPublic.KeyID()
 
 	// Sign and get the complete encoded token as a string using the secret

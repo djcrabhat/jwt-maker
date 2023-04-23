@@ -17,3 +17,15 @@ Configured with a `config.yaml` file in the working directory, or via environmen
 | config key  | env_variable    | description         | default       |
 | ----------- | --------------- | ------------------- | ------------- |
 | private_key | JWT_PRIVATE_KEY | path to private key | ./cert/id_rsa |
+
+
+## Build
+```sh
+make docker
+```
+
+## Run
+
+```sh
+make run
+```
